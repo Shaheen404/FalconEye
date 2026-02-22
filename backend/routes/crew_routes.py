@@ -117,7 +117,7 @@ async def stream_crew(req: CrewRequest) -> StreamingResponse:
                 step_callback=_step_callback,
             )
 
-            task = asyncio.ensure_future(asyncio.to_thread(crew.kickoff))
+            task = asyncio.create_task(asyncio.to_thread(crew.kickoff))
 
             while not task.done():
                 try:

@@ -190,7 +190,7 @@ def build_crew(
             _strategy_task(strategist, target),
         ],
         process=Process.sequential,
-        max_rpm=2,
+        max_rpm=2,  # Groq free-tier rate-limit workaround
         verbose=True,
         step_callback=step_callback,
     )
