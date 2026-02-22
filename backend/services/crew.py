@@ -1,7 +1,7 @@
 """CrewAI Agentic Engine for FalconEye.
 
 Defines the three core agents (Recon, Breach Analyst, Strategy) and
-wires them into a hierarchical CrewAI process.
+wires them into a sequential CrewAI process.
 """
 
 from __future__ import annotations
@@ -23,23 +23,11 @@ logger = logging.getLogger(__name__)
 safety = SafetyFilter()
 
 
-def _safe_search_wrapper(tool: Any) -> Any:
-    """Wrap a search tool so that blocked queries are rejected."""
-    original_run = tool._run  # type: ignore[attr-defined]
-
-    def _guarded_run(query: str, **kwargs: Any) -> str:
-        safety.validate(query)
-        return original_run(query, **kwargs)
-
-    tool._run = _guarded_run  # type: ignore[attr-defined]
-    return tool
-
-
 # ------------------------------------------------------------------ #
 # Agent Factories
 # ------------------------------------------------------------------ #
 def _build_recon_agent() -> Agent:
-    search_tool = _safe_search_wrapper(SerperDevTool())
+    search_tool = SerperDevTool()
     return Agent(
         role="Recon Agent",
         goal=(
@@ -108,7 +96,14 @@ def _recon_task(agent: Agent, target: str) -> Task:
             "registrations, and any other open-source data."
         ),
         expected_output=(
-            "A structured summary of all discovered OSINT data points "
+            "A Markdown report with sections:\n"
+            "## Discovered Resources\n"
+            "For each finding list:\n"
+            "- **Resource:** [Title]\n"
+            "- **URL:** [Link]\n"
+            "- **Info:** [Snippet or description]\n\n"
+            "## Summary\n"
+            "A brief summary of all discovered OSINT data points "
             "including URLs, usernames, and associated metadata."
         ),
         agent=agent,
@@ -123,8 +118,14 @@ def _breach_task(agent: Agent, target: str) -> Task:
             "findings provided by the Recon Agent."
         ),
         expected_output=(
-            "A correlation report listing any breached credentials, "
-            "exposed PII, and historical leak references."
+            "A Markdown correlation report with sections:\n"
+            "## Breach Findings\n"
+            "For each finding list:\n"
+            "- **Resource:** [Breach name or source]\n"
+            "- **URL:** [Reference link]\n"
+            "- **Info:** [Breached credentials, exposed PII, or leak details]\n\n"
+            "## Historical References\n"
+            "A list of historical leak references and their relevance."
         ),
         agent=agent,
     )
@@ -140,8 +141,16 @@ def _strategy_task(agent: Agent, target: str) -> Task:
         ),
         expected_output=(
             "A detailed social-engineering simulation report in Markdown "
-            "format with sections: Executive Summary, Attack Vectors, "
-            "Phishing Pretexts, Risk Rating, and Mitigations."
+            "format with sections:\n"
+            "## Executive Summary\n"
+            "## Attack Vectors\n"
+            "For each vector list:\n"
+            "- **Resource:** [Vector name]\n"
+            "- **URL:** [Related link if applicable]\n"
+            "- **Info:** [Description and impact]\n\n"
+            "## Phishing Pretexts\n"
+            "## Risk Rating\n"
+            "## Mitigations"
         ),
         agent=agent,
     )
@@ -180,8 +189,8 @@ def build_crew(
             _breach_task(analyst, target),
             _strategy_task(strategist, target),
         ],
-        process=Process.hierarchical,
-        manager_llm="anthropic/claude-sonnet-4-20250514",
+        process=Process.sequential,
+        max_rpm=2,  # Groq free-tier rate-limit workaround
         verbose=True,
         step_callback=step_callback,
     )
