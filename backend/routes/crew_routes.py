@@ -6,6 +6,7 @@ import ast
 import asyncio
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -45,43 +46,103 @@ class CrewResult(BaseModel):
 # ------------------------------------------------------------------ #
 # Log formatting helpers
 # ------------------------------------------------------------------ #
-def _format_log_message(raw: str) -> str:
-    """Parse raw step output and format Serper results as Resource/URL/Info.
+_TOOL_RESULT_RE = re.compile(
+    r"^ToolResult\(result=['\"](.+?)['\"],\s*result_as_answer=", re.DOTALL
+)
+_AGENT_ACTION_RE = re.compile(
+    r"^AgentAction\(thought=['\"](.+?)['\"],\s*tool=['\"](.+?)['\"]", re.DOTALL
+)
 
-    Falls back to the raw string when parsing is not possible.
-    """
-    try:
-        data = ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        try:
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            return raw
 
+def _parse_search_results(data: Any) -> list[dict] | None:
+    """Extract a list of result dicts from parsed Serper-style data."""
     if isinstance(data, dict):
         results = data.get("organic") or data.get("results") or []
-        if not isinstance(results, list):
-            return raw
-    elif isinstance(data, list):
+        if not isinstance(results, list) or not results:
+            return None
+    elif isinstance(data, list) and data:
         results = data
     else:
-        return raw
+        return None
+    return [r for r in results if isinstance(r, dict)] or None
 
-    if not results:
-        return raw
 
+def _format_results_block(results: list[dict]) -> str:
+    """Render a list of search-result dicts into clean formatted text."""
     lines: list[str] = []
-    for item in results:
-        if not isinstance(item, dict):
-            continue
+    for idx, item in enumerate(results, 1):
         title = item.get("title", "N/A")
         link = item.get("link", item.get("url", "N/A"))
         snippet = item.get("snippet", item.get("description", "N/A"))
-        lines.append(f"Resource: {title}")
-        lines.append(f"URL: {link}")
-        lines.append(f"Info: {snippet}")
+        lines.append(f"### {idx}. {title}")
+        lines.append(f"**URL:** {link}")
+        lines.append(f"**Details:** {snippet}")
         lines.append("")
-    return "\n".join(lines).strip() if lines else raw
+    return "\n".join(lines).strip()
+
+
+def _try_parse_data(raw: str) -> Any | None:
+    """Attempt to parse *raw* as a Python literal or JSON object."""
+    try:
+        return ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        pass
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return None
+
+
+def _format_log_message(raw: str) -> str:
+    """Parse raw step output and return clean, structured text.
+
+    Handles three shapes:
+      1. Serper JSON / Python-repr with ``organic`` or ``results`` keys.
+      2. ``ToolResult(result=…)`` wrappers emitted by CrewAI.
+      3. ``AgentAction(thought=…, tool=…, …)`` wrappers.
+    Falls back to the raw string when none of the above match.
+    """
+
+    # --- try to unwrap CrewAI ToolResult / AgentAction wrappers ----------
+    tr_match = _TOOL_RESULT_RE.match(raw)
+    if tr_match:
+        inner = tr_match.group(1)
+        parsed = _try_parse_data(inner)
+        if parsed is not None:
+            results = _parse_search_results(parsed)
+            if results:
+                return f"## 🔍 Search Results\n\n{_format_results_block(results)}"
+        return raw
+
+    aa_match = _AGENT_ACTION_RE.match(raw)
+    if aa_match:
+        thought = aa_match.group(1).strip()
+        tool = aa_match.group(2).strip()
+        header = f"## 🤖 Agent Action — {tool}\n\n**Thought:** {thought}"
+        # Try to extract and format the embedded result if present
+        result_marker = "result='"
+        result_idx = raw.find(result_marker)
+        if result_idx != -1:
+            inner = raw[result_idx + len(result_marker):]
+            inner = inner.rstrip(")")
+            if inner.endswith("'"):
+                inner = inner[:-1]
+            parsed = _try_parse_data(inner)
+            if parsed is not None:
+                results = _parse_search_results(parsed)
+                if results:
+                    return f"{header}\n\n{_format_results_block(results)}"
+        return header
+
+    # --- direct Serper payload (dict / list) ----------------------------
+    parsed = _try_parse_data(raw)
+    if parsed is not None:
+        results = _parse_search_results(parsed)
+        if results:
+            return f"## 🔍 Search Results\n\n{_format_results_block(results)}"
+
+    return raw
 
 
 # ------------------------------------------------------------------ #

@@ -27,9 +27,9 @@ class TestFormatLogMessageSerperJSON:
             ]
         }
         result = _format_log_message(json.dumps(data))
-        assert "Resource: Example Page" in result
-        assert "URL: https://example.com" in result
-        assert "Info: An example snippet." in result
+        assert "Example Page" in result
+        assert "https://example.com" in result
+        assert "An example snippet." in result
 
     def test_formats_results_key(self):
         data = {
@@ -42,8 +42,8 @@ class TestFormatLogMessageSerperJSON:
             ]
         }
         result = _format_log_message(json.dumps(data))
-        assert "Resource: Result Title" in result
-        assert "URL: https://result.com" in result
+        assert "Result Title" in result
+        assert "https://result.com" in result
 
     def test_formats_list_of_dicts(self):
         data = [
@@ -54,9 +54,9 @@ class TestFormatLogMessageSerperJSON:
             }
         ]
         result = _format_log_message(json.dumps(data))
-        assert "Resource: Item 1" in result
-        assert "URL: https://item1.com" in result
-        assert "Info: First item." in result
+        assert "Item 1" in result
+        assert "https://item1.com" in result
+        assert "First item." in result
 
     def test_multiple_results(self):
         data = {
@@ -66,15 +66,29 @@ class TestFormatLogMessageSerperJSON:
             ]
         }
         result = _format_log_message(json.dumps(data))
-        assert "Resource: A" in result
-        assert "Resource: B" in result
+        assert "A" in result
+        assert "B" in result
 
     def test_missing_fields_use_na(self):
         data = {"organic": [{"title": "Only Title"}]}
         result = _format_log_message(json.dumps(data))
-        assert "Resource: Only Title" in result
-        assert "URL: N/A" in result
-        assert "Info: N/A" in result
+        assert "Only Title" in result
+        assert "N/A" in result
+
+    def test_output_uses_markdown_headers(self):
+        data = {
+            "organic": [
+                {
+                    "title": "Example",
+                    "link": "https://example.com",
+                    "snippet": "desc",
+                }
+            ]
+        }
+        result = _format_log_message(json.dumps(data))
+        assert "###" in result
+        assert "**URL:**" in result
+        assert "**Details:**" in result
 
 
 class TestFormatLogMessageFallback:
@@ -96,4 +110,5 @@ class TestFormatLogMessageFallback:
     def test_python_repr_dict_parsed(self):
         raw = "{'organic': [{'title': 'Test', 'link': 'https://test.com', 'snippet': 'hello'}]}"
         result = _format_log_message(raw)
-        assert "Resource: Test" in result
+        assert "Test" in result
+        assert "https://test.com" in result

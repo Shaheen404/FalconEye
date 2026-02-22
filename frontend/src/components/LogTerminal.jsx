@@ -1,5 +1,26 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+
+function LogEntry({ message }) {
+  const isMarkdown =
+    /^##\s|^\*\*\w/m.test(message);
+
+  if (isMarkdown) {
+    return (
+      <div
+        className="prose prose-invert prose-sm max-w-none mb-3 pb-3 border-b border-falcon-border/40
+                    prose-headings:text-falcon-accent prose-headings:text-sm prose-headings:mt-2 prose-headings:mb-1
+                    prose-a:text-falcon-accent prose-strong:text-gray-100
+                    prose-p:text-gray-300 prose-p:my-1 prose-p:text-xs"
+      >
+        <ReactMarkdown>{message}</ReactMarkdown>
+      </div>
+    );
+  }
+
+  return <span className="text-gray-300">{message}</span>;
+}
 
 export default function LogTerminal({ logs, running }) {
   const bottomRef = useRef(null);
@@ -36,7 +57,7 @@ export default function LogTerminal({ logs, running }) {
               className="mb-1"
             >
               <span className="text-falcon-accent mr-2">▸</span>
-              <span className="text-gray-300">{log.message}</span>
+              <LogEntry message={log.message} />
             </motion.div>
           ))}
         </AnimatePresence>
