@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import logging
@@ -42,6 +43,48 @@ class CrewResult(BaseModel):
 
 
 # ------------------------------------------------------------------ #
+# Log formatting helpers
+# ------------------------------------------------------------------ #
+def _format_log_message(raw: str) -> str:
+    """Parse raw step output and format Serper results as Resource/URL/Info.
+
+    Falls back to the raw string when parsing is not possible.
+    """
+    try:
+        data = ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return raw
+
+    if isinstance(data, dict):
+        results = data.get("organic") or data.get("results") or []
+        if not isinstance(results, list):
+            return raw
+    elif isinstance(data, list):
+        results = data
+    else:
+        return raw
+
+    if not results:
+        return raw
+
+    lines: list[str] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title", "N/A")
+        link = item.get("link", item.get("url", "N/A"))
+        snippet = item.get("snippet", item.get("description", "N/A"))
+        lines.append(f"Resource: {title}")
+        lines.append(f"URL: {link}")
+        lines.append(f"Info: {snippet}")
+        lines.append("")
+    return "\n".join(lines).strip() if lines else raw
+
+
+# ------------------------------------------------------------------ #
 # SSE streaming endpoint
 # ------------------------------------------------------------------ #
 @router.post("/crew/stream")
@@ -56,11 +99,12 @@ async def stream_crew(req: CrewRequest) -> StreamingResponse:
 
     async def event_generator():
         log_queue: asyncio.Queue[str] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
 
         def _step_callback(step_output: Any) -> None:
-            """Push each agent step into the async queue."""
-            message = str(step_output)
-            log_queue.put_nowait(message)
+            """Push each agent step into the async queue (thread-safe)."""
+            message = _format_log_message(str(step_output))
+            loop.call_soon_threadsafe(log_queue.put_nowait, message)
 
         yield _sse_format({"run_id": run_id, "type": "start", "message": "Crew launched."})
 
@@ -73,8 +117,7 @@ async def stream_crew(req: CrewRequest) -> StreamingResponse:
                 step_callback=_step_callback,
             )
 
-            loop = asyncio.get_event_loop()
-            task = loop.run_in_executor(None, crew.kickoff)
+            task = asyncio.ensure_future(asyncio.to_thread(crew.kickoff))
 
             while not task.done():
                 try:
