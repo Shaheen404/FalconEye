@@ -7,6 +7,7 @@ wires them into a sequential CrewAI process.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Callable
 
 from crewai import Agent, Crew, Process, Task
@@ -16,6 +17,19 @@ from backend.memory.rag_pipeline import build_rag_tool
 from backend.services.safety_filter import SafetyFilter
 
 logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------------ #
+# LLM model identifiers (LiteLLM format used by CrewAI)
+# ------------------------------------------------------------------ #
+GROQ_WORKER_LLM = os.getenv(
+    "FALCONEYE_WORKER_LLM", "groq/llama-3.3-70b-versatile"
+)
+GROQ_ANALYST_LLM = os.getenv(
+    "FALCONEYE_ANALYST_LLM", "groq/llama-3.1-8b-instant"
+)
+ANTHROPIC_STRATEGY_LLM = os.getenv(
+    "FALCONEYE_STRATEGY_LLM", "anthropic/claude-3-5-sonnet-20240620"
+)
 
 # ------------------------------------------------------------------ #
 # Helpers
@@ -40,6 +54,7 @@ def _build_recon_agent() -> Agent:
             "directly and only use publicly available information."
         ),
         tools=[search_tool],
+        llm=GROQ_WORKER_LLM,
         verbose=True,
         allow_delegation=False,
     )
@@ -63,6 +78,7 @@ def _build_breach_analyst(pinecone_index: str | None = None) -> Agent:
             "mentions with live OSINT findings."
         ),
         tools=tools,
+        llm=GROQ_ANALYST_LLM,
         verbose=True,
         allow_delegation=False,
     )
@@ -80,6 +96,7 @@ def _build_strategy_agent() -> Agent:
             "You are a red-team consultant who designs phishing simulations "
             "and social-engineering exercises for Fortune-500 companies."
         ),
+        llm=ANTHROPIC_STRATEGY_LLM,
         verbose=True,
         allow_delegation=False,
     )
