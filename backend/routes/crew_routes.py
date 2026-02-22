@@ -47,7 +47,7 @@ class CrewResult(BaseModel):
 # Log formatting helpers
 # ------------------------------------------------------------------ #
 _TOOL_RESULT_RE = re.compile(
-    r"^ToolResult\(result=['\"](.+)['\"],\s*result_as_answer=", re.DOTALL
+    r"^ToolResult\(result=['\"](.+?)['\"],\s*result_as_answer=", re.DOTALL
 )
 _AGENT_ACTION_RE = re.compile(
     r"^AgentAction\(thought=['\"](.+?)['\"],\s*tool=['\"](.+?)['\"]", re.DOTALL
@@ -121,9 +121,10 @@ def _format_log_message(raw: str) -> str:
         tool = aa_match.group(2).strip()
         header = f"## 🤖 Agent Action — {tool}\n\n**Thought:** {thought}"
         # Try to extract and format the embedded result if present
-        result_idx = raw.find("result='")
+        result_marker = "result='"
+        result_idx = raw.find(result_marker)
         if result_idx != -1:
-            inner = raw[result_idx + 8:]
+            inner = raw[result_idx + len(result_marker):]
             inner = inner.rstrip(")")
             if inner.endswith("'"):
                 inner = inner[:-1]

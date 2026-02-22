@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 
 function LogEntry({ message }) {
   const isMarkdown =
-    message.includes("##") || message.includes("**") || message.includes("###");
+    /^##\s|^\*\*\w/m.test(message);
 
   if (isMarkdown) {
     return (
